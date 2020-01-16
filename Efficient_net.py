@@ -6,7 +6,7 @@ import cv2
 import sys
 import datetime
 
-#Functions and NN archiectures
+#Functions and NN archietctures
 from CNN import *
 from helpers_bis_effnet import *
 # Machine learning libraries ---------------------------------------------------
@@ -17,6 +17,7 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.models import load_model, save_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.model_selection import train_test_split
 
 # Check if GPU is active, for laptops primarly.
 print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
@@ -24,52 +25,58 @@ print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('
 # ==============================================================================
 # Basic parameters
 # ==============================================================================
+#
 
+
+add_name='B0_with_f1_100' #prefix added to plot and weights name
 #Load previously trained weights into the CNN
 Checkpoint_network = False
-Net_file_path = 'weights/Eff_net_B0_final.h5'
+Net_file_path = 'weights/'+add_name+'Eff_net_final.h5'
 
 #Test the trained CNN into a fresh test set that hasn't been trained on
 Test_fresh_set = True
 
 #parameters relative to the train image loading
-Images_load_length = 69
+Images_load_length = 15000 #10000 for tests
 start_train = 0					#Defines the first file loaded
 
 #Path to the images and labels + name of the label catalogue
-path = 'Public/'
+path = '/scratch/nfrank/Public/'
 label_name = 'image_catalog2.0train.csv'
 
 #Fix the randomness of the simulation
 tf.random.set_seed(5)
 
 #separates the loaded images into train and validation set
-train_ratio = 0.9
+train_ratio = 0.2 #ratio test/train
 
 #Number of learning iterations of the CNN
-EPOCHS = 40
+EPOCHS = 50
 
 #Parameters relative to the test set
-Images_load_length_test = 3000
+Images_load_length_test = 3000 
 start_test = 50000
 
 
-crit_pixels = 150	#Number of minimum lensed pixel in the image required to be flagged 1
+crit_pixels = 100	#Number of minimum lensed pixel in the image required to be flagged 1
 ext_rate = 0	#Rate of background augmentation
 
 # ==============================================================================
 # Labels loading
 # ==============================================================================
 
-#Loading the labels from the catalogue
-Labels = load_csv_data(path+label_name,12)[start_train:Images_load_length+start_train]*1
+#Loading the essential columns from the catalogue
+npix_sources = load_csv_data(path+label_name,12)[start_train:Images_load_length+start_train]*1 #change condition
+n_source_images = load_csv_data(path+label_name,16)[start_train:Images_load_length+start_train]*1
+mag_eff = load_csv_data(path+label_name,17)[start_train:Images_load_length+start_train]*1
+
+
 
 #Setting the 1s and 0s with the crit pixel condition
-Labels = (Labels >= crit_pixels)*1
+Labels = (npix_sources >= crit_pixels)*(n_source_images>0)*(mag_eff>1.6)*1
 
 #Test the Labels assignation
-print(Labels)
-print(Labels.shape)
+
 print("Number of zeros")
 print(np.shape(np.where(Labels == 0))[1])
 
@@ -118,7 +125,8 @@ print(Labels)
 print("Number of zeros")
 print(np.shape(np.where(Labels == 0))[1])
 print('Generating more background images')
-
+print('nan check')
+print(np.isnan(Labels).any(),np.isnan(Images).any())
 # ==============================================================================
 # Background generation + shuffle
 # ==============================================================================
@@ -148,14 +156,20 @@ print(np.shape(np.where(Labels == 0))[1])
 # Split train and test
 # ==============================================================================
 
-Images_load_length = Images.shape[0]
 
+train_images, test_images, train_labels, test_labels = train_test_split(Images,Labels, test_size=train_ratio , random_state=42)
+
+
+
+
+'''
+Images_load_length = Images.shape[0]
 train_images = Images[0:np.int(Images_load_length*train_ratio),:,:,:]
 test_images = Images[np.int(Images_load_length*train_ratio) :,:,:,:]
 
 train_labels = Labels[0:np.int( Images_load_length*train_ratio )]
 test_labels = Labels[np.int(Images_load_length*train_ratio) :]
-
+'''
 # ==============================================================================
 # Data augment using keras data generator
 # ==============================================================================
@@ -195,7 +209,7 @@ plt.xlabel('Epoch')
 plt.ylabel('Accuracy')
 plt.ylim([0.5, 1])
 plt.legend(loc='lower right')
-plt.savefig('roc_neuneu.png')
+plt.savefig(add_name+'accuracy.png')
 
 plt.figure(2)
 plt.plot(history.history['loss'], label='loss')
@@ -204,11 +218,11 @@ plt.xlabel('Epoch')
 plt.ylabel('loss')
 plt.ylim([0, 1])
 plt.legend(loc='lower right')
-plt.savefig('loss_neuneu.png')
+plt.savefig(add_name+'loss.png')
 
 
 # ================================================================================
-# Loading fresh data for clean validation (Not executed if Test_fresh_set = False)
+# Loading new data for clean validation (Not executed if Test_fresh_set = False)
 # ================================================================================
 
 if Test_fresh_set:
@@ -219,13 +233,20 @@ if Test_fresh_set:
 	Images_test_mid = load_data(path , '.fits' ,label_name, Images_load_length_test ,  'mid' , True , start_test)
 	Images_test_IR = load_data(path , '.fits' ,label_name, Images_load_length_test ,  'IR' , True , start_test)
 
-	Labels_test = load_csv_data(path+label_name,12)[start_test:Images_load_length_test+start_test]
-	print('Done loading data')
-	Labels_test = (Labels_test >= crit_pixels)*1
 
-# ==============================================================================
-# Log strech and preprocessing of the test data
-# ==============================================================================
+
+	npix_sources_test = load_csv_data(path+label_name,12)[start_test:Images_load_length_test+start_test]*1 #change condition
+	n_source_images_test = load_csv_data(path+label_name,16)[start_test:Images_load_length_test+start_test]*1
+	mag_eff_test = load_csv_data(path+label_name,17)[start_test:Images_load_length_test+start_test]*1
+
+
+
+	#Setting the 1s and 0s with the crit pixel condition
+	Labels_test  = (npix_sources_test >= 20)*(n_source_images_test>0)*(mag_eff_test>1.6)*1
+
+	# ==============================================================================
+	# Log strech and preprocessing of the test data
+	# ==============================================================================
 
 	print('Logarithmic strech :')
 
@@ -238,40 +259,45 @@ if Test_fresh_set:
 
 	print('Logarithmic data strech done')
 
-# ==============================================================================
-# Image combination
-# ==============================================================================
+	# ==============================================================================
+	# Image combination
+	# ==============================================================================
 
 	Images_test = Img_combine_3(Images_test_vis,Images_test_mid,Images_test_IR)
 
-# ==============================================================================
-# Test set augmentation
-# ==============================================================================
+	# ==============================================================================
+	# Test set augmentation
+	# ==============================================================================
 
-#    New_BG_test , New_labels_test = background_images_gen(Images_test , Labels_test)
+	#    New_BG_test , New_labels_test = background_images_gen(Images_test , Labels_test)
 
- #   Images_test = tf.concat([Images_test, New_BG_test] , 0)
- #   Labels_test = np.concatenate((Labels_test , New_labels_test),0)
+	#   Images_test = tf.concat([Images_test, New_BG_test] , 0)
+	#   Labels_test = np.concatenate((Labels_test , New_labels_test),0)
 
-  #  indices = tf.range(start=0, limit=len(Labels_test), dtype=tf.int32)
-   # shuffled_indices = tf.random.shuffle(indices)
+	#  indices = tf.range(start=0, limit=len(Labels_test), dtype=tf.int32)
+	# shuffled_indices = tf.random.shuffle(indices)
 	#Images_test=tf.gather(Images_test, shuffled_indices)
 	#Labels_test=tf.gather(Labels_test, shuffled_indices)
 
-# ==============================================================================
-# Make a prediction over the test set and evaluate the performance of the NN
-# ==============================================================================
+	# ==============================================================================
+	# Make a prediction over the test set and evaluate the performance of the NN
+	# ==============================================================================
 
 	test_loss, test_acc = model.evaluate(Images_test,  Labels_test, verbose=2)
 	print(test_acc)
 	eval_predict = model.predict(Images_test)
+	print("Proba")
+	print(eval_predict)
+	print('Fbeta max')
+	print(max_f_beta(Labels_test,eval_predict,0.01))
 
-# ==============================================================================
-# Set manually the threshold of 0s and 1s, and print the results
-# ==============================================================================
+	# ==============================================================================
+	# Set manually the threshold of 0s and 1s, and print the results
+	# ==============================================================================
 	eval_predict[np.where(eval_predict <= 0.5)] = int(0)
 	eval_predict[np.where(eval_predict > 0.5)] = int(1)
 	eval_predict=eval_predict.squeeze()
+	
 	print("Labels")
 	print(Labels_test)
 	print("Predictions")
