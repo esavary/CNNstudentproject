@@ -14,75 +14,101 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.visualization import LogStretch, MinMaxInterval,ImageNormalize
 
+#machine learning library:
+from sklearn.metrics import fbeta_score
+
 # ==============================================================================
 # Data Loading
 # ==============================================================================
 def load_data (path, extensions ,label_name, load_length , IR  , test = False, start = 0):
 
-    print('Data loading :')
-    file_n=load_csv_data(path+label_name,1)
-    filelist_y = str(np.zeros(len(file_n)))
-    filelist_j = str(np.zeros(len(file_n)))		#Read the file number and initialize
-    filelist_h = str(np.zeros(len(file_n)))		#empty string lists
-    filelist = str(np.zeros(len(file_n)))
+	print('Data loading :')
+	file_n=load_csv_data(path+label_name,1)
+	filelist_y = str(np.zeros(len(file_n)))
+	filelist_j = str(np.zeros(len(file_n)))		#Read the file number and initialize
+	filelist_h = str(np.zeros(len(file_n)))		#empty string lists
+	filelist = str(np.zeros(len(file_n)))
 
-    if IR == 'IR':		#Load the deeper infrared channel on its own
+	if IR == 'IR':		#Load the deeper infrared channel on its own
 
-        transform =  MinMaxInterval()
-        #Fill the list with the files path and name
-        filelist_h = [path + 'EUC_H/' + 'imageEUC_H-' + str(int(file_n[x])) + extensions for x in np.arange(len(file_n))]
+		transform =  MinMaxInterval()
+		#Fill the list with the files path and name
+		filelist_h = [path + 'EUC_H/' + 'imageEUC_H-' + str(int(file_n[x])) + extensions for x in np.arange(len(file_n))]
 
 
-        Images = np.empty( ( load_length,200,200 ) ,dtype=np.float32)
+		Images = np.empty( ( load_length,200,200 ) ,dtype=np.float32)
 
-        for k in range(load_length):
-            if k%300==0:
-                print(str(k) + ', loading file ' + str(k+start))
+		for k in range(load_length):
+			if k%300==0:
+				print(str(k) + ', loading file ' + str(k+start))
 			#Interpolate the IR images to match the VIS resolution
 			#and load the data
-            Im_h = np.array(fits.getdata( filelist_h[k+start]))
-            Im_h = transform(Im_h)
-            Im_h= np.array( cv2.resize(Im_h, dsize=(200, 200))  )
+			try:
+				Im_h = np.array(fits.getdata( filelist_h[k+start]))
+				Im_h = transform(Im_h)
+				Im_h= np.array( cv2.resize(Im_h, dsize=(200, 200))  )
 
-            Images[k,:,:] = Im_h
+				Images[k,:,:] = Im_h
+			except FileNotFoundError:
+				Im_h = np.array(fits.getdata( filelist_h[k+start-1]))
+				Im_h = transform(Im_h)
+				Im_h= np.array( cv2.resize(Im_h, dsize=(200, 200))  )
+				print(filelist_h[k+start]+' not found')
 
-    elif IR == 'mid':	#Load mid IR channels to combine them into one image
+	elif IR == 'mid':	#Load mid IR channels to combine them into one image
 
-        transform =  MinMaxInterval()
+		transform =  MinMaxInterval()
 
-        filelist_y = [path + 'EUC_Y/' + 'imageEUC_Y-' + str(int(file_n[x])) + extensions for x in np.arange(len(file_n))]
-        filelist_j = [path + 'EUC_J/' + 'imageEUC_J-' + str(int(file_n[x])) + extensions for x in np.arange(len(file_n))]
+		filelist_y = [path + 'EUC_Y/' + 'imageEUC_Y-' + str(int(file_n[x])) + extensions for x in np.arange(len(file_n))]
+		filelist_j = [path + 'EUC_J/' + 'imageEUC_J-' + str(int(file_n[x])) + extensions for x in np.arange(len(file_n))]
 
-        Images = np.empty( ( load_length,200,200 ) ,dtype=np.float32)
+		Images = np.empty( ( load_length,200,200 ) ,dtype=np.float32)
 
-        for k in range(load_length):
-            if k%300==0:
-                print(str(k) + ', loading file ' + str(k+start))
+		for k in range(load_length):
+			if k%300==0:
+				print(str(k) + ', loading file ' + str(k+start))
+			try:
+				Im_y = np.array(fits.getdata( filelist_y[k+start]))
+				Im_y = transform(Im_y)
+				Im_y= np.array( cv2.resize(Im_y, dsize=(200, 200))  )
 
-            Im_y = np.array(fits.getdata( filelist_y[k+start]))
-            Im_y = transform(Im_y)
-            Im_y= np.array( cv2.resize(Im_y, dsize=(200, 200))  )
+				Im_j = np.array(fits.getdata( filelist_j[k+start]))
+				Im_j = transform(Im_j)
+				Im_j= np.array( cv2.resize(Im_j, dsize=(200, 200))  )
 
-            Im_j = np.array(fits.getdata( filelist_j[k+start]))
-            Im_j = transform(Im_j)
-            Im_j= np.array( cv2.resize(Im_j, dsize=(200, 200))  )
+				Images[k,:,:] = 0.5 * Im_y + 0.5*Im_j
+			except FileNotFoundError:
+				Im_y = np.array(fits.getdata( filelist_y[k+start-1]))
+				Im_y = transform(Im_y)
+				Im_y= np.array( cv2.resize(Im_y, dsize=(200, 200))  )
 
-            Images[k,:,:] = 0.5 * Im_y + 0.5*Im_j
+				Im_j = np.array(fits.getdata( filelist_j[k+start-1]))
+				Im_j = transform(Im_j)
+				Im_j= np.array( cv2.resize(Im_j, dsize=(200, 200))  )
 
-    else:
+				Images[k,:,:] = 0.5 * Im_y + 0.5*Im_j
+				print(filelist_j[k+start]+' not found')
+
+	else:
 		#Load the visible images for the third channel
-        filelist = [path + 'EUC_VIS/' + 'imageEUC_VIS-' + str(int(file_n[x])) + extensions for x in np.arange(len(file_n))]
+		filelist = [path + 'EUC_VIS/' + 'imageEUC_VIS-' + str(int(file_n[x])) + extensions for x in np.arange(len(file_n))]
 
-        Images = np.empty( ( load_length,200,200 ) ,dtype=np.float32)
+		Images = np.empty( ( load_length,200,200 ) ,dtype=np.float32)
 
-        for k in range(load_length):
-            if k%1000==0:
-                print(str(k) + ', loading file ' + str(k+start))
-            Images[k,:,:] = np.array( fits.getdata( filelist[k+start    ] ) )
+		for k in range(load_length):
+			if k%1000==0:
+				print(str(k) + ', loading file ' + str(k+start))
+			try:
 
-    print('Done loading data')
+				Images[k,:,:] = np.array( fits.getdata( filelist[k+start    ] ) )
+			except FileNotFoundError:
+				Images[k,:,:] = np.array( fits.getdata( filelist[k+start -1   ] ) )
+				print(filelist[k+start]+' not found')
+				
 
-    return Images
+	print('Done loading data')
+
+	return Images
 
 
 # ==============================================================================
@@ -91,11 +117,11 @@ def load_data (path, extensions ,label_name, load_length , IR  , test = False, s
 
 def load_csv_data(data_path, col ):
 	
-    #Loads data for a certain column
-    x = np.genfromtxt(data_path, delimiter=",")
-    input_data = x[1:, col]
-
-    return input_data
+	#Loads data for a certain column
+	x = np.genfromtxt(data_path, delimiter=",")
+	input_data = x[1:, col]
+	#print('check_column',col,input_data)
+	return input_data
 
 # ==============================================================================
 # Image combination over 3 channels
@@ -262,12 +288,31 @@ def plot_images_test_mosaic (train_images, norm, start, predictions = [20]) :
 
 def preprocessing(Images, Images_load_length):
 	
-    centered_data = np.zeros(200*200*Images_load_length).reshape(Images_load_length,200,200)
-    std_data = np.zeros(200*200*Images_load_length).reshape(Images_load_length,200,200)
-    
-    #For each image, simply substract the mean and divide by its variance
-    for k in range(Images_load_length):
-        centered_data[k,:,:] = Images[k,:,:] - np.mean(Images[k,:,:])
-        std_data[k,:,:] = centered_data[k,:,:] / np.std(centered_data[k,:,:])
+	centered_data = np.zeros(200*200*Images_load_length).reshape(Images_load_length,200,200)
+	std_data = np.zeros(200*200*Images_load_length).reshape(Images_load_length,200,200)
 
-    return std_data
+	#For each image, simply substract the mean and divide by its variance
+	for k in range(Images_load_length):
+		centered_data[k,:,:] = Images[k,:,:] - np.mean(Images[k,:,:])
+		if np.std(centered_data[k,:,:])==0:
+			print('null std')
+		else:
+			std_data[k,:,:] = centered_data[k,:,:] / np.std(centered_data[k,:,:])
+
+	return std_data
+
+
+def max_f_beta(y_true, y_predicted_proba,beta):
+	thresholds=[0.,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.]
+	fbeta_array=[]
+	for thres in thresholds:
+		y_predicted_proba[np.where(y_predicted_proba <= thres)] = int(0)
+		y_predicted_proba[np.where(y_predicted_proba > thres)] = int(1)
+		y_predicted_proba.squeeze()
+		fbeta_array.append(fbeta_score(y_true, y_predicted_proba, average='binary', beta=beta))
+	max_fbeta_ind=np.argmax(fbeta_array)
+	max_score=fbeta_array[max_fbeta_ind]
+	max_thres=thresholds[max_fbeta_ind]
+	return max_score, max_thres
+	
+
