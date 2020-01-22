@@ -18,6 +18,7 @@ from tensorflow.keras.regularizers import l2
 from tensorflow.keras.models import load_model, save_model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import fbeta_score
 
 # Check if GPU is active, for laptops primarly.
 print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
@@ -28,10 +29,10 @@ print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('
 #
 
 
-add_name='B0_with_f1_100' #prefix added to plot and weights name
+add_name='newdata_l1_bigbat' #prefix added to plot and weights name
 #Load previously trained weights into the CNN
 Checkpoint_network = False
-Net_file_path = 'weights/'+add_name+'Eff_net_final.h5'
+Net_file_path = 'D:\\challenge_EUCLID\\Euclid_challenge\\weights\\'+add_name+'Eff_net_final.h5'
 
 #Test the trained CNN into a fresh test set that hasn't been trained on
 Test_fresh_set = True
@@ -45,7 +46,7 @@ path = '/scratch/nfrank/Public/'
 label_name = 'image_catalog2.0train.csv'
 
 #Fix the randomness of the simulation
-tf.random.set_seed(5)
+#tf.random.set_seed(5)
 
 #separates the loaded images into train and validation set
 train_ratio = 0.2 #ratio test/train
@@ -61,10 +62,16 @@ start_test = 50000
 crit_pixels = 100	#Number of minimum lensed pixel in the image required to be flagged 1
 ext_rate = 0	#Rate of background augmentation
 
+
+#Open file to record max fbeta:
+fbetalist=open('fbeta.txt','a+')
+
+
+
 # ==============================================================================
 # Labels loading
 # ==============================================================================
-
+'''
 #Loading the essential columns from the catalogue
 npix_sources = load_csv_data(path+label_name,12)[start_train:Images_load_length+start_train]*1 #change condition
 n_source_images = load_csv_data(path+label_name,16)[start_train:Images_load_length+start_train]*1
@@ -79,23 +86,27 @@ Labels = (npix_sources >= crit_pixels)*(n_source_images>0)*(mag_eff>1.6)*1
 
 print("Number of zeros")
 print(np.shape(np.where(Labels == 0))[1])
-
+'''
 # ==============================================================================
 # Vis images loading + log stretch
 # ==============================================================================
 
 print('Visible images loading')
-Images_vis = load_data(path , '.fits' ,label_name, Images_load_length ,  'vis' , True , start_train)
+#Images_vis = load_data(path , '.fits' ,label_name, Images_load_length ,  'vis' , True , start_train)
+Images_vis, Labels = load_data_from_file('D:\\challenge_EUCLID\\statistics\\Lenses\\','D:\\challenge_EUCLID\\statistics\\NonLenses\\')
+print('labelsss',Labels)
 
+#Images_vis=np.reshape(Image,(np.shape(Image)[0],200,200,1))
 # plot_images_test_mosaic(Images_vis, None, 0, Labels)	#Visualize some images before preprocessing
 
 #Preprocessing of the images + logscale
-Images_vis = logarithmic_scale(Images_vis,Images_load_length)
-Images_vis = preprocessing(Images_vis,Images_load_length)
+#Images_vis = logarithmic_scale(Images_vis,Images_load_length)
+Images_vis = logarithmic_scale(Images_vis,len(Labels))
+#Images_vis = preprocessing(Images_vis,Images_load_length)
 
 #~ plot_images_test_mosaic(Images_vis, None, 0, Labels) #Visualize some images after preprocessing
 
-
+'''
 # ==============================================================================
 # IR images loading + log stretch (with interpolation + stacking)
 # ==============================================================================
@@ -117,8 +128,10 @@ Images_IR = preprocessing(Images_IR,Images_load_length)
 # ==============================================================================
 # Image combination over different bands
 # ==============================================================================
-Images = Img_combine_3(Images_vis,Images_mid, Images_IR)
-
+'''
+#Images = Img_combine_3(Images_vis,Images_mid, Images_IR)
+Images = Img_combine_3(Images_vis,Images_vis, Images_vis)
+'''
 #Label check before the augmentation
 print(Labels.shape)
 print(Labels)
@@ -155,13 +168,13 @@ print(np.shape(np.where(Labels == 0))[1])
 # ==============================================================================
 # Split train and test
 # ==============================================================================
+'''
 
+train_images, t_images, train_labels, t_labels = train_test_split(Images,Labels, test_size=train_ratio , random_state=42)
 
-train_images, test_images, train_labels, test_labels = train_test_split(Images,Labels, test_size=train_ratio , random_state=42)
-
-
-
-
+test_images, validation_images, test_labels, validation_labels = train_test_split(t_images,t_labels, test_size=0.2 , random_state=42)
+print(train_labels)
+print(np.shape(train_images),np.shape(test_images),np.shape(validation_images),'----shapes')
 '''
 Images_load_length = Images.shape[0]
 train_images = Images[0:np.int(Images_load_length*train_ratio),:,:,:]
@@ -188,20 +201,22 @@ model = Eff_net_B0_simplest(Net_file_path , 'All'  , Checkpoint_network)
 # Define the learning variable and fit the model
 # ==============================================================================
 
-callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, min_delta=0.0001)
+callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True, min_delta=0.0001)
 model.summary()
 model.compile(optimizer=Adam(lr=0.0001),loss = 'binary_crossentropy', metrics=['accuracy'])
-history = model.fit_generator(datagen.flow(train_images, train_labels, batch_size=32, shuffle=True) , epochs=EPOCHS, callbacks = [callback], validation_data=(test_images, test_labels), verbose = 1)
+#history = model.fit_generator(datagen.flow(train_images, train_labels, batch_size=5, shuffle=True) , epochs=EPOCHS, callbacks = [callback], validation_data=(test_images, test_labels), verbose = 1)
 
 # ==============================================================================
 # Save the weights
 # ==============================================================================
 model.trainable = True
-model.save_weights(Net_file_path)
+#model.save_weights(Net_file_path)
+model.load_weights(Net_file_path)
 
 # ==============================================================================
 # Plot the output
 # ==============================================================================
+'''
 plt.figure(1)
 plt.plot(history.history['accuracy'], label='accuracy')
 plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
@@ -220,7 +235,7 @@ plt.ylim([0, 1])
 plt.legend(loc='lower right')
 plt.savefig(add_name+'loss.png')
 
-
+'''
 # ================================================================================
 # Loading new data for clean validation (Not executed if Test_fresh_set = False)
 # ================================================================================
@@ -228,6 +243,7 @@ plt.savefig(add_name+'loss.png')
 if Test_fresh_set:
 
 	print('Data loading for testing:')
+	'''
 
 	Images_test_vis = load_data(path , '.fits' ,label_name, Images_load_length_test ,  'vis' , True , start_test)
 	Images_test_mid = load_data(path , '.fits' ,label_name, Images_load_length_test ,  'mid' , True , start_test)
@@ -243,27 +259,34 @@ if Test_fresh_set:
 
 	#Setting the 1s and 0s with the crit pixel condition
 	Labels_test  = (npix_sources_test >= 20)*(n_source_images_test>0)*(mag_eff_test>1.6)*1
-
+	'''
+	
+	Images_test_vis=validation_images
 	# ==============================================================================
 	# Log strech and preprocessing of the test data
 	# ==============================================================================
 
 	print('Logarithmic strech :')
 
-	Images_test_vis = logarithmic_scale(Images_test_vis,Images_load_length_test)
-	Images_test_vis = preprocessing(Images_test_vis,Images_load_length_test)
+	#Images_test_vis = logarithmic_scale(Images_test_vis,Images_load_length_test)
+	#Images_test_vis = preprocessing(Images_test_vis,Images_load_length_test)
+	
+	'''
 	Images_test_IR = logarithmic_scale(Images_test_IR,Images_load_length_test)
 	Images_test_IR = preprocessing(Images_test_IR,Images_load_length_test)
 	Images_test_mid = logarithmic_scale(Images_test_mid,Images_load_length_test)
 	Images_test_mid = preprocessing(Images_test_mid,Images_load_length_test)
-
+	'''
 	print('Logarithmic data strech done')
 
 	# ==============================================================================
 	# Image combination
 	# ==============================================================================
 
-	Images_test = Img_combine_3(Images_test_vis,Images_test_mid,Images_test_IR)
+	#Images_test = Img_combine_3(Images_test_vis,Images_test_mid,Images_test_IR)
+	#Images_test = Img_combine_3(Images_test_vis,Images_test_vis,Images_test_vis)
+	Images_test =validation_images
+	Labels_test=validation_labels
 
 	# ==============================================================================
 	# Test set augmentation
@@ -288,24 +311,31 @@ if Test_fresh_set:
 	eval_predict = model.predict(Images_test)
 	print("Proba")
 	print(eval_predict)
-	print('Fbeta max')
-	print(max_f_beta(Labels_test,eval_predict,0.01))
 
+
+	#fbe,lim=max_f_beta(Labels_test,eval_predict,0.01)
+	#print(fbe,lim)
+	#fbetalist.write(add_name+','+str(fbe)+','+str(lim)+'\n')
+	#fbetalist.close()
+	#print(np.where(eval_predict > 0.05))
 	# ==============================================================================
 	# Set manually the threshold of 0s and 1s, and print the results
 	# ==============================================================================
 	eval_predict[np.where(eval_predict <= 0.5)] = int(0)
 	eval_predict[np.where(eval_predict > 0.5)] = int(1)
 	eval_predict=eval_predict.squeeze()
+
+	print('Fbeta max')
+	print(fbeta_score(Labels_test, eval_predict, 0.01))
 	
 	print("Labels")
-	print(Labels_test)
+	print(Labels_test[0:10])
 	print("Predictions")
-	print(eval_predict)
-	print("Number of 0 predicted")
-	print(np.shape(np.where(eval_predict == 0))[1])
-	print("Number of 0 that should be predicted")
-	print(np.shape(np.where(Labels_test == 0))[1])
+	print(eval_predict[0:10])
+	print("Number of 1 predicted")
+	print(np.shape(np.where(eval_predict == 1))[1])
+	print("Number of 1 that should be predicted")
+	print(np.shape(np.where(Labels_test == 1))[1])
 	error = Labels_test-eval_predict.flatten()
 	print("Number of False Positive")
 	print(np.shape(np.where(error == -1))[1])

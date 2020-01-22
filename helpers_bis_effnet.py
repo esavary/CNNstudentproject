@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 import cv2
-
+import os
+import glob
 #Image manipulation
 from PIL import Image
 from PIL import ImageFilter
@@ -20,6 +21,40 @@ from sklearn.metrics import fbeta_score
 # ==============================================================================
 # Data Loading
 # ==============================================================================
+
+def load_data_from_file(pathlens,pathnonlens):
+	
+	filelens=os.listdir(pathlens)
+	filenonlens=os.listdir(pathnonlens)
+	transform =  MinMaxInterval()
+	Images=np.empty((len(filelens)+len(filenonlens),200,200 ) ,dtype=np.float32)
+	Labels=np.empty((len(filelens)+len(filenonlens), ) ,dtype=np.int32)
+	for k in np.arange(len(filelens)):
+		print('lens'+str(k) + '__' + str(len(filelens) + len(filenonlens)))
+		Im_h = np.array(fits.getdata( pathlens+filelens[k]))
+		Im_h = transform(Im_h)
+		Im_h= np.array( cv2.resize(Im_h, dsize=(200, 200))  )
+
+		Images[k,:,:] = Im_h
+		Labels[k]=1
+	start=len(filelens)
+	end=len(filelens)+len(filenonlens)
+	for k in np.arange(start,end):
+
+		print('nonlens'+str(k)+'__'+str(len(filelens)+len(filenonlens)))
+		Im_h = np.array(fits.getdata( pathnonlens+filenonlens[k-start]))
+		Im_h = transform(Im_h)
+		Im_h= np.array( cv2.resize(Im_h, dsize=(200, 200))  )
+
+		Images[k,:,:] = Im_h
+		Labels[k]=0
+	return Images,Labels
+
+
+
+
+
+
 def load_data (path, extensions ,label_name, load_length , IR  , test = False, start = 0):
 
 	print('Data loading :')
@@ -302,10 +337,12 @@ def preprocessing(Images, Images_load_length):
 	return std_data
 
 
-def max_f_beta(y_true, y_predicted_proba,beta):
+def max_f_beta(y_true, y_predicted,beta):
 	thresholds=[0.,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.]
 	fbeta_array=[]
+	prediction=y_predicted
 	for thres in thresholds:
+		y_predicted_proba=prediction
 		y_predicted_proba[np.where(y_predicted_proba <= thres)] = int(0)
 		y_predicted_proba[np.where(y_predicted_proba > thres)] = int(1)
 		y_predicted_proba.squeeze()

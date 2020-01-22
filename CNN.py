@@ -455,20 +455,23 @@ def Eff_net():
 
     return model
 
+
+
+
 def Eff_net_B0_simplest(Net_file_path , Trainable = 'All',  load = True):
 
     # loading pretrained conv base model
-    conv_base = EfficientNetB0(weights="imagenet", include_top=False, input_shape=(200, 200, 3))
+    conv_base = EfficientNetB0(weights="imagenet", include_top=False, input_shape=(200, 200, 3)) #original bo,3
 
-    dropout_rate = 0.2
+    dropout_rate = 0.5 #original 0.2
     model = models.Sequential()
     model.add(conv_base)
     model.add(layers.Flatten(name="flatten"))
     model.add(tf.keras.layers.BatchNormalization())
-    model.add(layers.Dense(32, activation="relu", name="Dense1_add"))
+    model.add(layers.Dense(32, activation="relu", name="Dense1_add",kernel_regularizer=l2(0.01), bias_regularizer=l2(0.01)))
     # model.add(tf.keras.layers.BatchNormalization())
     model.add(layers.Dropout(dropout_rate))
-    model.add(layers.Dense(16, activation="relu", name="Dense2_add"))
+    model.add(layers.Dense(16, activation="relu",name="Dense2_add",kernel_regularizer=l2(0.01), bias_regularizer=l2(0.01)))
     # model.add(tf.keras.layers.BatchNormalization())
     model.add(layers.Dropout(dropout_rate))
 
